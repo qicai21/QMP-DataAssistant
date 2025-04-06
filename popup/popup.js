@@ -310,12 +310,13 @@ function handleFileUpload(event) {
     shipmentData = jsonData
       .filter((row) => row["发运日期"] && row["箱号"] && row["皮重时间"] && row["净重"])
       .map((row) => ({
-        SEND_DATE: row["发运日期"],
+        SEND_DATE: convertExcelDate(row["发运日期"]), // 转换 "发运日期"
         TRANS_MEAN_NO: row["箱号"],
-        RECEIVE_DATE: row["皮重时间"],
+        RECEIVE_DATE: convertExcelDate(row["皮重时间"]), // 转换 "皮重时间"
         RECEIVE_WEIGHT: row["净重"] * 1000, // 转换为克
         TRANS_DETAIL_GUID: "",
         DOCUMENT_GUID: documentGuid,
+        MATCH_STATUS: "",
       }));
 
     // 控制台打印读取到的数据
@@ -333,11 +334,94 @@ function handleFileUpload(event) {
   reader.readAsArrayBuffer(file);
 }
 
+// 转换 Excel 日期值为 JavaScript 日期
+function convertExcelDate(excelDate) {
+  if (typeof excelDate === "number") {
+    // 如果是数字，按 Excel 日期值转换
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30)); // Excel 的起始日期是 1899-12-30（UTC 时间）
+    const utcDate = new Date(excelEpoch.getTime() + excelDate * 86400000); // 每天是 86400000 毫秒
+    return new Date(utcDate.getTime() + 8 * 60 * 60 * 1000); // 转换为北京时间（UTC+8）
+  } else if (typeof excelDate === "string") {
+    // 如果是字符串，尝试直接解析为日期
+    const parsedDate = new Date(excelDate);
+    if (!isNaN(parsedDate)) {
+      return new Date(parsedDate.getTime() + 8 * 60 * 60 * 1000); // 转换为北京时间（UTC+8）
+    }
+  }
+  throw new Error(`无法解析日期值: ${excelDate}`);
+}
+
+// 匹配 shipmentData 和 dataList 的方法
+function matchShipmentDataWithDataList() {
+  shipmentData.forEach((shipmentItem) => {
+    // 提取 shipmentItem 的信息
+    const { TRANS_MEAN_NO, SEND_DATE } = shipmentItem;
+
+    // 格式化 SEND_DATE 为日期（忽略时间部分）
+    const shipmentDate = new Date(SEND_DATE).toDateString();
+
+    // 在 dataList 中查找所有符合条件的项
+    const matchedItems = dataList.filter((dataItem) => {
+      const dataDate = new Date(dataItem.SEND_DATE).toDateString();
+      return (
+        dataItem.TRANS_MEAN_NO === TRANS_MEAN_NO && // TRANS_MEAN_NO 相同
+        dataDate === shipmentDate // SEND_DATE 为同一天
+      );
+    });
+
+    if (matchedItems.length > 1) {
+      // 如果匹配到多条记录
+      shipmentItem.MATCH_STATUS = "同箱号同一日多条数据";
+    } else if (matchedItems.length === 1) {
+      const matchedItem = matchedItems[0];
+      if (!matchedItem.RECEIVE_WEIGHT || matchedItem.RECEIVE_WEIGHT === 0) {
+        // 匹配成功且 RECEIVE_WEIGHT 为空或 0
+        shipmentItem.TRANS_DETAIL_GUID = matchedItem.TP_GUID;
+        shipmentItem.MATCH_STATUS = "done";
+      } else {
+        // 匹配成功但 RECEIVE_WEIGHT 不为空或 0
+        shipmentItem.MATCH_STATUS = "已有收货重量";
+      }
+    } else {
+      // 未找到匹配项
+      shipmentItem.MATCH_STATUS = "未匹配到";
+    }
+  });
+
+  // 打开 display.html 页面并传递数据
+  openDisplayPage(shipmentData);
+
+  // 通知匹配完成
+  logToBackground("匹配完成，更新后的 shipmentData:");
+  logToBackground(shipmentData);
+
+  // 通知 background 匹配结果
+  notifyBackground({
+    type: "matchComplete",
+    matchedData: shipmentData,
+  });
+}
+
+// 打开 display.html 页面并传递数据
+function openDisplayPage(data) {
+  const dataStr = encodeURIComponent(JSON.stringify(data));
+  chrome.windows.create({
+    url: `display/display.html?data=${dataStr}`,
+    type: "popup",
+    width: 800,
+    height: 600,
+  });
+}
+
 // 初始化同步按钮状态
 updateSyncButtonState();
 
 // 事件监听
 document.addEventListener("DOMContentLoaded", init);
-syncBtn.addEventListener("click", syncData);
 uploadButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", handleFileUpload);
+// 或在同步完成后调用
+syncBtn.addEventListener("click", async () => {
+  await syncData();
+  matchShipmentDataWithDataList();
+});

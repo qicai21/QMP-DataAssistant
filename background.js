@@ -13,11 +13,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("DocumentGuid:", message.documentGuid);
     console.log("Cookie:", message.cookie);
     console.log("Authorization:", message.authorization);
+    sendResponse({ status: "Variables logged" });
   } else if (message.type === "syncComplete") {
     console.log("同步完成，总数据量:", message.totalData);
     console.log("第一条数据内容:", message.firstData);
     sendResponse({ status: "Sync data logged" });
   } else if (message.type === "table") {
     console.table(message.tableData);
+    sendResponse({ status: "Table data logged" });
   }
 })

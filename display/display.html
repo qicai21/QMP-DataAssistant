@@ -1,25 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据展示</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipment Data</title>
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    button {
+      display: block;
+      margin: 0 auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
 </head>
-
 <body>
-    <h2>Excel 数据展示</h2>
-    <table id="data-table">
-        <thead>
-            <tr>
-                <th>箱号</th>
-                <th>皮重时间</th>
-                <th>净重</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-    <script src="display.js"></script>
+  <h1>Shipment Data</h1>
+  <table id="shipment-table">
+    <thead>
+      <tr>
+        <th>发货日期</th>
+        <th>箱号</th>
+        <th>收货时间</th>
+        <th>收货重量</th>
+        <th>TP_GUID</th>
+        <th>DOCUMENT_GUID</th>
+        <th>匹配结果</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- 数据行将通过 JavaScript 动态插入 -->
+    </tbody>
+  </table>
+  <button id="confirm-button">确认</button>
+  <script src="display.js"></script>
 </body>
-
 </html>
