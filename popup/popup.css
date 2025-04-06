@@ -1,60 +1,104 @@
+/* 全局样式 */
 body {
     font-family: Arial, sans-serif;
+    margin: 0;
     padding: 10px;
+    width: 300px; /* 约为屏幕宽度的 1/5 */
+    height: 240px; /* 约为屏幕高度的 1/4 */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    background-color: #ffffff;
 }
 
+/* 上传区域 */
 .upload-group {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    margin: 10px 0;
 }
 
-input[type="text"] {
-    width: 200px;
+#upload-text {
+    flex: 1;
     padding: 8px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
     margin-right: 10px;
 }
 
-button {
+#upload-button {
     padding: 8px 16px;
-    background-color: #007BFF;
-    color: white;
-    border: none;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-button:hover {
-    background-color: #0056b3;
-}
-
-p {
-    margin-top: 10px;
     font-size: 14px;
-}
-
-a {
-    color: #007BFF;
-    text-decoration: none;
-}
-
-a:hover {
-    text-decoration: underline;
-}
-
-/* 默认按钮样式 */
-#send-request-button {
-    background-color: #007bff; /* 正常状态的背景色 */
+    background-color: #007bff;
     color: white;
     border: none;
-    padding: 10px 20px;
-    font-size: 16px;
+    border-radius: 5px;
     cursor: pointer;
+}
+
+#upload-button:disabled {
+    background-color: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+}
+
+/* 信息展示区域 */
+#sync-status {
+    margin: 20px 0;
+    padding: 10px;
+    font-size: 16px;
+    text-align: center;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
     border-radius: 5px;
 }
 
-/* 按钮不可点击时的样式 */
-#send-request-button:disabled {
-    background-color: #cccccc; /* 灰色背景 */
-    color: #666666; /* 灰色文字 */
-    cursor: not-allowed; /* 鼠标指针显示为不可点击 */
+/* 按钮区域 */
+.button-group {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0 40px 0; /* 向上移动按钮组，底部留出更多空间 */
+}
+
+#send-request-button,
+#bulk-upload-button {
+    flex: 1;
+    padding: 6px; /* 缩小按钮大小 */
+    font-size: 12px; /* 缩小字体大小 */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 0 5px;
+}
+
+#send-request-button {
+    background-color: #007bff;
+    color: white;
+}
+
+#bulk-upload-button {
+    background-color: #28a745;
+    color: white;
+}
+
+#send-request-button:disabled,
+#bulk-upload-button:disabled {
+    background-color: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+}
+
+/* 底部区域 */
+.footer {
+    background-color: #f1f1f1;
+    text-align: left;
+    padding: 5px 10px;
+    font-size: 12px;
+    color: #666;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
 }

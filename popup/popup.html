@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>93海关数据上传</title>
+    <title>检疫管理平台数据助手</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 
@@ -13,10 +13,18 @@
         <input type="text" id="upload-text" placeholder="上传选择文件">
         <button id="upload-button">选择</button>
     </div>
+
     <input type="file" id="file-input" style="display: none" accept=".xlsx,.xls">
+
     <p id="sync-status">待同步</p>
-    <a href="#">usless href</a>
-    <button id="send-request-button">匹配数据</button>
+
+    <div class="button-group">
+        <button id="send-request-button">匹配数据</button>
+        <button id="bulk-upload-button">批量上传</button>
+    </div>
+
+    <div class="footer">版本1.0（仅供铁岭93试用）</div>
+
     <script src="popup.js"></script>
 </body>
 
