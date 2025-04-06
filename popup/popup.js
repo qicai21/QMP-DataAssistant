@@ -17,16 +17,95 @@ const uploadText = document.getElementById('upload-text');
 
 // 初始化函数
 async function init() {
+  // 刷新当前活动页面
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0] && tabs[0].id) {
       chrome.tabs.reload(tabs[0].id);
     }
   });
 
+  // 获取 documentGuid 和 cookie
+  await getDocumentGuidAndCookie();
+
+  // 获取 authorization
+  await getAuthorization();
+
   const storedData = await chrome.storage.local.get(['dataList', 'totalData']);
   dataList = storedData.dataList || [];
   totalData = storedData.totalData || 0;
   updateStatus();
+}
+
+// 获取 documentGuid 和 cookie
+async function getDocumentGuidAndCookie() {
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    if (tabs[0] && tabs[0].id) {
+      const tabId = tabs[0].id;
+
+      // 注入脚本以获取 documentGuid, cookie
+      chrome.scripting.executeScript(
+        {
+          target: { tabId: tabId },
+          func: () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            return {
+              documentGuid: urlParams.get('documentGuid'),
+              cookie: document.cookie,
+            };
+          },
+        },
+        (results) => {
+          if (results && results[0] && results[0].result) {
+            let { documentGuid, cookie } = results[0].result;
+
+            // 对 cookie 进行加工处理
+            cookie = encodeCookie(cookie);
+
+            // 存储加工后的 cookie 和 documentGuid
+            chrome.storage.local.set({ documentGuid, cookie });
+          }
+        }
+      );
+    }
+  });
+}
+
+// 去掉cookie头部的apihost=，并对值进行URI编码,处理中文
+function encodeCookie(cookie) {
+    const use_cookie = (cookie + '"}').replace(/^apihost=\s*;\s*/, '');
+    return use_cookie.split(';')
+        .map(part => {
+            const [key, ...valueParts] = part.split('=');
+            const trimmedKey = key.trim();
+            
+            if (valueParts.length > 0) {
+                // 对值进行URI编码（保留=号）
+                const value = valueParts.join('=').trim();
+                return `${trimmedKey}=${encodeURIComponent(value)}`;
+            }
+            return trimmedKey;
+        })
+        .join('; ')
+        .replace(/%2F/g, '/');
+}
+
+// 获取 authorization
+async function getAuthorization() {
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      const authorizationHeader = details.requestHeaders.find(
+        (header) => header.name.toLowerCase() === 'authorization'
+      );
+      if (authorizationHeader) {
+        chrome.storage.local.set({ authorization: authorizationHeader.value });
+      }
+    },
+    { 
+      // 仅监听指定请求的 headers
+      urls: ["http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/list"] // 仅监听指定域名的请求
+    },
+    ['requestHeaders']
+  );
 }
 
 // 更新状态显示
