@@ -7,6 +7,9 @@ document.head.appendChild(script);
 let dataList = [];
 let totalData = 0;
 let isSyncing = false;
+let authorization = null;
+let cookie = null;
+let documentGuid = null;
 
 // DOM 元素
 const syncBtn = document.getElementById('send-request-button');
@@ -15,97 +18,128 @@ const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
 const uploadText = document.getElementById('upload-text');
 
-// 初始化函数
-async function init() {
-  // 刷新当前活动页面
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0] && tabs[0].id) {
-      chrome.tabs.reload(tabs[0].id);
+// 通知 background.js
+function notifyBackground(message) {
+  chrome.runtime.sendMessage(message, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error("通知 background 失败:", chrome.runtime.lastError);
+    } else {
+      console.log("background 响应:", response);
     }
   });
+}
 
-  // 获取 documentGuid 和 cookie
-  await getDocumentGuidAndCookie();
+// 初始化函数
+async function init() {
+  try {
+    // 刷新当前活动页面
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].id) {
+        chrome.tabs.reload(tabs[0].id);
+      }
+    });
 
-  // 获取 authorization
-  await getAuthorization();
+    // 确保异步操作完成
+    await getDocumentGuidAndCookie();
+    await getAuthorization();
 
-  const storedData = await chrome.storage.local.get(['dataList', 'totalData']);
-  dataList = storedData.dataList || [];
-  totalData = storedData.totalData || 0;
-  updateStatus();
+    // 通知 background 获取完成
+    notifyBackground({
+      type: "variablesReady",
+      documentGuid,
+      cookie,
+      authorization,
+    });
+
+    updateStatus();
+  } catch (error) {
+    console.error("初始化失败:", error);
+  }
 }
 
 // 获取 documentGuid 和 cookie
 async function getDocumentGuidAndCookie() {
-  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-    if (tabs[0] && tabs[0].id) {
-      const tabId = tabs[0].id;
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].id) {
+        const tabId = tabs[0].id;
 
-      // 注入脚本以获取 documentGuid, cookie
-      chrome.scripting.executeScript(
-        {
-          target: { tabId: tabId },
-          func: () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            return {
-              documentGuid: urlParams.get('documentGuid'),
-              cookie: document.cookie,
-            };
+        // 注入脚本以获取 documentGuid 和 cookie
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tabId },
+            func: () => {
+              const urlParams = new URLSearchParams(window.location.search);
+              return {
+                documentGuid: urlParams.get('documentGuid'),
+                cookie: document.cookie,
+              };
+            },
           },
-        },
-        (results) => {
-          if (results && results[0] && results[0].result) {
-            let { documentGuid, cookie } = results[0].result;
+          (results) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else if (results && results[0] && results[0].result) {
+              const result = results[0].result;
 
-            // 对 cookie 进行加工处理
-            cookie = encodeCookie(cookie);
-
-            // 存储加工后的 cookie 和 documentGuid
-            chrome.storage.local.set({ documentGuid, cookie });
+              // 对 cookie 进行加工处理
+              cookie = encodeCookie(result.cookie);
+              documentGuid = result.documentGuid;
+              resolve();
+            } else {
+              reject(new Error("无法获取 documentGuid 和 cookie"));
+            }
           }
-        }
-      );
-    }
+        );
+      } else {
+        reject(new Error("未找到活动标签页"));
+      }
+    });
   });
 }
 
-// 去掉cookie头部的apihost=，并对值进行URI编码,处理中文
+// 去掉 cookie 头部的 apihost=，并对值进行 URI 编码，处理中文
 function encodeCookie(cookie) {
-    const use_cookie = (cookie + '"}').replace(/^apihost=\s*;\s*/, '');
-    return use_cookie.split(';')
-        .map(part => {
-            const [key, ...valueParts] = part.split('=');
-            const trimmedKey = key.trim();
-            
-            if (valueParts.length > 0) {
-                // 对值进行URI编码（保留=号）
-                const value = valueParts.join('=').trim();
-                return `${trimmedKey}=${encodeURIComponent(value)}`;
-            }
-            return trimmedKey;
-        })
-        .join('; ')
-        .replace(/%2F/g, '/');
+  const use_cookie = (cookie + '"}').replace(/^apihost=\s*;\s*/, '');
+  return use_cookie
+    .split(';')
+    .map((part) => {
+      const [key, ...valueParts] = part.split('=');
+      const trimmedKey = key.trim();
+
+      if (valueParts.length > 0) {
+        // 对值进行 URI 编码（保留 = 号）
+        const value = valueParts.join('=').trim();
+        return `${trimmedKey}=${encodeURIComponent(value)}`;
+      }
+      return trimmedKey;
+    })
+    .join('; ')
+    .replace(/%2F/g, '/');
 }
 
 // 获取 authorization
 async function getAuthorization() {
-  chrome.webRequest.onBeforeSendHeaders.addListener(
-    (details) => {
-      const authorizationHeader = details.requestHeaders.find(
-        (header) => header.name.toLowerCase() === 'authorization'
-      );
-      if (authorizationHeader) {
-        chrome.storage.local.set({ authorization: authorizationHeader.value });
-      }
-    },
-    { 
-      // 仅监听指定请求的 headers
-      urls: ["http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/list"] // 仅监听指定域名的请求
-    },
-    ['requestHeaders']
-  );
+  return new Promise((resolve) => {
+    chrome.webRequest.onBeforeSendHeaders.addListener(
+      (details) => {
+        const authorizationHeader = details.requestHeaders.find(
+          (header) => header.name.toLowerCase() === 'authorization'
+        );
+        if (authorizationHeader) {
+          authorization = authorizationHeader.value;
+          resolve();
+        }
+      },
+      {
+        // 仅监听指定请求的 headers
+        urls: [
+          "http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/list",
+        ],
+      },
+      ["requestHeaders"]
+    );
+  });
 }
 
 // 更新状态显示
@@ -114,7 +148,7 @@ function updateStatus() {
 }
 
 // 获取请求头
-function getRequestHeaders(authorization, cookie, documentGuid) {
+function getRequestHeaders() {
   return {
     "accept": "*/*",
     "accept-encoding": "gzip, deflate",
@@ -130,12 +164,12 @@ function getRequestHeaders(authorization, cookie, documentGuid) {
     "Pragma": "no-cache",
     "Referer": `http://apq.customs.gov.cn/grain/static/htmls/ProcessEnt/document_confirm_detail.html?documentGuid=${documentGuid}`,
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-    "x-requested-with": "XMLHttpRequest"
+    "x-requested-with": "XMLHttpRequest",
   };
 }
 
 // 构建表单数据字符串
-function buildFormDataString(pagenum, totalpage, documentGuid) {
+function buildFormDataString(pagenum, totalpage) {
   const requestBody = {
     sort: "SEND_DATE",
     sortDesc: false,
@@ -143,14 +177,14 @@ function buildFormDataString(pagenum, totalpage, documentGuid) {
     paging: {
       pagecount: 50,
       pagenum: pagenum,
-      totalpage: totalpage
+      totalpage: totalpage,
     },
-    documentGuid: documentGuid
+    documentGuid: documentGuid,
   };
 
   const formData = new URLSearchParams();
   Object.entries(requestBody).forEach(([key, value]) => {
-    if (typeof value === 'object') {
+    if (typeof value === "object") {
       Object.entries(value).forEach(([subKey, subValue]) => {
         formData.append(`${key}[${subKey}]`, subValue);
       });
@@ -162,27 +196,24 @@ function buildFormDataString(pagenum, totalpage, documentGuid) {
   return formData.toString();
 }
 
-// 发送POST请求获取列表数据
+// 发送 POST 请求获取列表数据
 async function postGetListRequest(pagenum, totalpage) {
-  const { authorization, cookie, documentGuid } = await chrome.storage.local.get([
-    'authorization',
-    'cookie',
-    'documentGuid'
-  ]);
-
   if (!authorization || !cookie || !documentGuid) {
-    throw new Error('缺少必要的请求参数：authorization、cookie或documentGuid');
+    throw new Error("缺少必要的请求参数：authorization、cookie或documentGuid");
   }
 
-  const headers = getRequestHeaders(authorization, cookie, documentGuid);
-  const formDataStr = buildFormDataString(pagenum, totalpage, documentGuid);
+  const headers = getRequestHeaders();
+  const formDataStr = buildFormDataString(pagenum, totalpage);
 
-  const response = await fetch("http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/list", {
-    method: "POST",
-    headers: headers,
-    body: formDataStr,
-    credentials: "include"
-  });
+  const response = await fetch(
+    "http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/list",
+    {
+      method: "POST",
+      headers: headers,
+      body: formDataStr,
+      credentials: "include",
+    }
+  );
 
   if (!response.ok) {
     throw new Error(`请求失败，状态码: ${response.status}`);
@@ -194,49 +225,40 @@ async function postGetListRequest(pagenum, totalpage) {
 // 同步数据
 async function syncData() {
   if (isSyncing) return;
-  
+
   isSyncing = true;
   syncBtn.disabled = true;
-  statusEl.textContent = '同步中...';
+  statusEl.textContent = "同步中...";
 
   try {
     // 第一次请求
     const firstResult = await postGetListRequest(1, 0);
     totalData = firstResult.paging.totalpage;
     dataList = [...firstResult.content];
-    
-    await chrome.storage.local.set({ 
-      dataList: dataList,
-      totalData: totalData
-    });
-    
+
     updateStatus();
-    
+
     // 计算剩余请求次数
     const totalPages = Math.ceil(totalData / 50);
-    
+
     // 执行剩余请求
     for (let i = 2; i <= totalPages; i++) {
-      statusEl.textContent = `同步中... (${i-1}/${totalPages})`;
+      statusEl.textContent = `同步中... (${i - 1}/${totalPages})`;
       const result = await postGetListRequest(i, totalData);
       dataList = [...dataList, ...result.content];
-      
-      // 分批保存到存储
-      if (i % 5 === 0 || i === totalPages) {
-        await chrome.storage.local.set({ dataList: dataList });
-      }
     }
-    
-    // 最终保存
-    await chrome.storage.local.set({ 
-      dataList: dataList,
-      totalData: totalData
-    });
-    
+
     statusEl.textContent = `同步完成，共 ${dataList.length} 条记录`;
+
+    // 通知 background 同步完成
+    notifyBackground({
+      type: "syncComplete",
+      totalData: dataList.length,
+      firstData: dataList[0] || null,
+    });
   } catch (error) {
-    console.error('同步出错:', error);
-    statusEl.textContent = '同步失败: ' + error.message;
+    console.error("同步出错:", error);
+    statusEl.textContent = "同步失败: " + error.message;
   } finally {
     isSyncing = false;
     syncBtn.disabled = false;
@@ -251,34 +273,34 @@ function handleFileUpload(event) {
   uploadText.value = file.name;
 
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = function (e) {
     const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: 'array' });
+    const workbook = XLSX.read(data, { type: "array" });
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
     const receive_data = jsonData
-      .filter(row => row['箱号'] && row['皮重时间'] && row['净重'])
-      .map(row => ({
-        箱号: row['箱号'],
-        皮重时间: row['皮重时间'],
-        净重: row['净重']
+      .filter((row) => row["箱号"] && row["皮重时间"] && row["净重"])
+      .map((row) => ({
+        箱号: row["箱号"],
+        皮重时间: row["皮重时间"],
+        净重: row["净重"],
       }));
 
     const dataStr = encodeURIComponent(JSON.stringify(receive_data));
     chrome.windows.create({
       url: `display/display.html?data=${dataStr}`,
-      type: 'popup',
+      type: "popup",
       width: 800,
-      height: 600
+      height: 600,
     });
   };
   reader.readAsArrayBuffer(file);
 }
 
 // 事件监听
-document.addEventListener('DOMContentLoaded', init);
-syncBtn.addEventListener('click', syncData);
-uploadButton.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', handleFileUpload);
+document.addEventListener("DOMContentLoaded", init);
+syncBtn.addEventListener("click", syncData);
+uploadButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", handleFileUpload);
