@@ -18,6 +18,8 @@ const statusEl = document.getElementById('sync-status');
 const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
 const uploadText = document.getElementById('upload-text');
+const bulkUploadButton = document.getElementById("bulk-upload-button");
+bulkUploadButton.disabled = true; // 初始状态不可用
 
 // 通知 background.js 打印日志
 function logToBackground(message) {
@@ -413,6 +415,92 @@ function openDisplayPage(data) {
   });
 }
 
+// 批量上传方法
+async function bulkUploadDatas() {
+  // 运行 generateUploadDataString 方法生成待上传数据
+  const stringData = generateUploadDataString();
+
+  // 将结果通过 background 打印到控制台
+  logToBackground("待上传的 stringData 集合:");
+  stringData.forEach((data, index) => {
+    logToBackground(`第 ${index + 1} 条数据: ${data}`);
+  });
+
+  // 获取请求头
+  const headers = getRequestHeaders();
+  // 统计上传成功的条数
+  let successCount = 0;
+
+  // 遍历每一条 stringData 并发送 POST 请求
+  for (const [index, data] of stringData.entries()) {
+    try {
+      const response = await fetch(
+        "http://apq.customs.gov.cn/webapi/ent/Process/StockInConfirm/receive/update/A",
+        {
+          method: "POST",
+          headers: headers,
+          body: data,
+          credentials: "include",
+        }
+      );
+
+      if (response.ok) {
+        successCount++;
+        logToBackground(`第 ${index + 1} 条数据上传成功`);
+      } else {
+        logToBackground(`第 ${index + 1} 条数据上传失败，状态码: ${response.status}`);
+      }
+    } catch (error) {
+      logToBackground(`第 ${index + 1} 条数据上传失败，错误: ${error.message}`);
+    }
+  }
+
+  // 上传完成后弹出提示
+  alert(`上传完成，共计上传 ${successCount} 条数据`);
+}
+
+// 从匹配后的 shipmentData 中生成待上传的 stringData 集合
+function generateUploadDataString() {
+  // 筛选出 MATCH_STATUS 为 "done" 的项
+  const doneItems = shipmentData.filter((item) => item.MATCH_STATUS === "done");
+
+  // 将每个 item 转换为 URL 编码的字符串
+  return doneItems.map((item) => {
+    const data = {
+      COMPLETE_RECEIVE_DESC: "",
+      RECEIVE_DESC: "",
+      WEIGHT: item.RECEIVE_WEIGHT, // 使用 RECEIVE_WEIGHT，默认为 0
+      ReceiveDate: formatDateToString(item.RECEIVE_DATE), // 转换 RECEIVE_DATE 为字符串
+      TRANS_DETAIL_GUID: item.TRANS_DETAIL_GUID, // 使用 TRANS_DETAIL_GUID
+      DOCUMENT_GUID: item.DOCUMENT_GUID, // 使用 DOCUMENT_GUID
+    };
+
+    // 转换为 URL 编码的字符串
+    const formData = new URLSearchParams();
+    for (const [key, value] of Object.entries(data)) {
+      formData.append(key, value);
+    }
+
+    return formData.toString(); // 返回生成的 dataString
+  });
+}
+
+// 将 JavaScript Date 转换为 "YYYY-MM-DD HH:mm:ss" 格式的字符串
+function formatDateToString(date) {
+  if (!(date instanceof Date) || isNaN(date)) {
+    throw new Error(`无效的日期: ${date}`);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0"); // 月份从 0 开始
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 // 初始化同步按钮状态
 updateSyncButtonState();
 
@@ -422,6 +510,9 @@ uploadButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", handleFileUpload);
 // 或在同步完成后调用
 syncBtn.addEventListener("click", async () => {
+  bulkUploadButton.disabled = true; // 在匹配数据前禁用按钮
   await syncData();
   matchShipmentDataWithDataList();
+  bulkUploadButton.disabled = false; // 匹配完成后启用按钮
 });
+bulkUploadButton.addEventListener("click", bulkUploadDatas);
