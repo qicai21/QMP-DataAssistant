@@ -1,0 +1,20 @@
+{
+    "manifest_version": 3,
+    "name": "检疫管理平台数据助手",
+    "version": "1.0",
+    "description": "用于九三公司做到端数批量上传",
+    "action": {
+        "default_popup": "popup/popup.html"
+    },
+    "permissions": [
+        "storage",
+        "cookies", 
+        "webRequest"
+    ],
+    "host_permissions": [
+        "*://apq.customs.gov.cn/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    }
+}
