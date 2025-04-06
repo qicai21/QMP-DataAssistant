@@ -10,6 +10,7 @@ let isSyncing = false;
 let authorization = null;
 let cookie = null;
 let documentGuid = null;
+let shipmentData =[];
 
 // DOM 元素
 const syncBtn = document.getElementById('send-request-button');
@@ -18,15 +19,30 @@ const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
 const uploadText = document.getElementById('upload-text');
 
+// 通知 background.js 打印日志
+function logToBackground(message) {
+  chrome.runtime.sendMessage({ type: "log", message });
+}
+
 // 通知 background.js
 function notifyBackground(message) {
+  if (!message || !message.type) {
+    logToBackground("通知 background 失败: 消息类型(type)未定义");
+    return;
+  }
+
   chrome.runtime.sendMessage(message, (response) => {
     if (chrome.runtime.lastError) {
-      console.error("通知 background 失败:", chrome.runtime.lastError);
+      logToBackground(`通知 background 失败: ${chrome.runtime.lastError.message}`);
     } else {
-      console.log("background 响应:", response);
+      logToBackground(`background 响应: ${JSON.stringify(response)}`);
     }
   });
+}
+
+// 更新同步按钮状态
+function updateSyncButtonState() {
+  syncBtn.disabled = shipmentData.length === 0; // 当 shipmentData 为空时禁用按钮
 }
 
 // 初始化函数
@@ -53,7 +69,7 @@ async function init() {
 
     updateStatus();
   } catch (error) {
-    console.error("初始化失败:", error);
+    logToBackground(`初始化失败: ${error.message}`); 
   }
 }
 
@@ -256,8 +272,11 @@ async function syncData() {
       totalData: dataList.length,
       firstData: dataList[0] || null,
     });
+
+    // 发送日志到 background
+    logToBackground(`同步完成，共 ${dataList.length} 条记录`);
   } catch (error) {
-    console.error("同步出错:", error);
+    logToBackground(`同步出错: ${error.message}`);
     statusEl.textContent = "同步失败: " + error.message;
   } finally {
     isSyncing = false;
@@ -272,6 +291,13 @@ function handleFileUpload(event) {
 
   uploadText.value = file.name;
 
+  // 检查文件扩展名是否为 .xlsx 或 .xls
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  if (fileExtension !== 'xlsx' && fileExtension !== 'xls') {
+    logToBackground("仅支持 .xlsx 和 .xls 文件格式");
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = function (e) {
     const data = new Uint8Array(e.target.result);
@@ -280,24 +306,35 @@ function handleFileUpload(event) {
     const worksheet = workbook.Sheets[firstSheetName];
     const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-    const receive_data = jsonData
-      .filter((row) => row["箱号"] && row["皮重时间"] && row["净重"])
+    // 过滤数据：只保留 "发运日期"、"箱号"、"皮重时间"、"净重" 都不为空的行
+    shipmentData = jsonData
+      .filter((row) => row["发运日期"] && row["箱号"] && row["皮重时间"] && row["净重"])
       .map((row) => ({
-        箱号: row["箱号"],
-        皮重时间: row["皮重时间"],
-        净重: row["净重"],
+        SEND_DATE: row["发运日期"],
+        TRANS_MEAN_NO: row["箱号"],
+        RECEIVE_DATE: row["皮重时间"],
+        RECEIVE_WEIGHT: row["净重"] * 1000, // 转换为克
+        TRANS_DETAIL_GUID: "",
+        DOCUMENT_GUID: documentGuid,
       }));
 
-    const dataStr = encodeURIComponent(JSON.stringify(receive_data));
-    chrome.windows.create({
-      url: `display/display.html?data=${dataStr}`,
-      type: "popup",
-      width: 800,
-      height: 600,
+    // 控制台打印读取到的数据
+    logToBackground(`读取到 ${shipmentData.length} 条数据:`);
+    // 通知 background 获取完成
+    notifyBackground({
+      type: "table",
+      tableData: shipmentData,
     });
+
+    // 更新同步按钮状态
+    updateSyncButtonState();
   };
+
   reader.readAsArrayBuffer(file);
 }
+
+// 初始化同步按钮状态
+updateSyncButtonState();
 
 // 事件监听
 document.addEventListener("DOMContentLoaded", init);

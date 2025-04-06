@@ -40,3 +40,21 @@ a {
 a:hover {
     text-decoration: underline;
 }
+
+/* 默认按钮样式 */
+#send-request-button {
+    background-color: #007bff; /* 正常状态的背景色 */
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+/* 按钮不可点击时的样式 */
+#send-request-button:disabled {
+    background-color: #cccccc; /* 灰色背景 */
+    color: #666666; /* 灰色文字 */
+    cursor: not-allowed; /* 鼠标指针显示为不可点击 */
+}
