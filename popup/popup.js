@@ -17,6 +17,12 @@ const uploadText = document.getElementById('upload-text');
 
 // 初始化函数
 async function init() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && tabs[0].id) {
+      chrome.tabs.reload(tabs[0].id);
+    }
+  });
+
   const storedData = await chrome.storage.local.get(['dataList', 'totalData']);
   dataList = storedData.dataList || [];
   totalData = storedData.totalData || 0;

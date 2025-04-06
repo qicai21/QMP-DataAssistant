@@ -9,6 +9,8 @@
     "permissions": [
         "storage",
         "cookies", 
+        "tabs",
+        "activeTab",
         "webRequest"
     ],
     "host_permissions": [
